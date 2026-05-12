@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +9,6 @@
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; }
     .status-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
-    .addon-card { transition: all 0.2s; }
   </style>
 </head>
 <body class="bg-zinc-950 text-white min-h-screen">
@@ -18,32 +17,18 @@
     <header class="text-center mb-10">
       <h1 class="text-5xl font-bold mb-2">My Stremio Hub</h1>
       <p class="text-zinc-400">Personal Addon & Debrid Status Dashboard</p>
-      <div class="flex gap-4 justify-center mt-6">
-        <button onclick="checkAllStatuses()" 
-                class="px-6 py-3 bg-sky-600 hover:bg-sky-500 rounded-full font-medium flex items-center gap-2">
+      <div class="flex justify-center gap-4 mt-6 flex-wrap">
+        <button onclick="checkAllStatuses()" class="px-6 py-3 bg-sky-600 hover:bg-sky-500 rounded-full font-medium flex items-center gap-2">
           <i class="fas fa-sync"></i> Refresh All
         </button>
-        <button onclick="shareConfig()" 
-                class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-full font-medium flex items-center gap-2">
+        <button onclick="showAddForm()" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-full font-medium flex items-center gap-2">
+          <i class="fas fa-plus"></i> Add Addon
+        </button>
+        <button onclick="shareConfig()" class="px-6 py-3 bg-violet-600 hover:bg-violet-500 rounded-full font-medium flex items-center gap-2">
           <i class="fas fa-share"></i> Share Config
         </button>
       </div>
     </header>
-
-    <!-- Add New Addon -->
-    <div class="bg-zinc-900 rounded-2xl p-6 mb-10">
-      <h3 class="text-xl font-semibold mb-4">Add New Addon / Service</h3>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <input id="new-name" type="text" placeholder="Name (e.g. Torrentio)" 
-               class="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white">
-        <input id="new-url" type="text" placeholder="Check URL / Manifest (e.g. https://torrentio.strem.fun/manifest.json)" 
-               class="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white md:col-span-2">
-        <button onclick="addNewAddon()" 
-                class="bg-sky-600 hover:bg-sky-500 rounded-xl font-medium py-3 md:col-span-3">
-          Add to Dashboard
-        </button>
-      </div>
-    </div>
 
     <!-- Debrid Services -->
     <section class="mb-12">
@@ -55,201 +40,226 @@
 
     <!-- My Addons -->
     <section>
-      <div class="flex justify-between items-center mb-6">
-        <h2 class="text-3xl font-semibold flex items-center gap-3">
-          <i class="fas fa-plug text-sky-400"></i> My Addons
-        </h2>
-        <button onclick="clearAllAddons()" class="text-red-400 hover:text-red-500 text-sm flex items-center gap-1">
-          <i class="fas fa-trash"></i> Clear All
-        </button>
-      </div>
-      <div class="grid gap-6" id="addon-cards"></div>
+      <h2 class="text-3xl font-semibold mb-6 flex items-center gap-3">
+        <i class="fas fa-plug text-sky-400"></i> My Addons
+      </h2>
+      <div id="addons-container" class="grid gap-6"></div>
     </section>
 
-    <footer class="text-center text-zinc-500 mt-20 text-sm">
-      Personal Stremio Dashboard • Last checked: <span id="last-checked">Never</span>
+    <!-- Add/Edit Modal -->
+    <div id="addon-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+      <div class="bg-zinc-900 rounded-3xl p-8 w-full max-w-md mx-4">
+        <h3 class="text-2xl font-bold mb-6" id="modal-title">Add New Addon</h3>
+        <input id="addon-name" type="text" placeholder="Addon Name (e.g. Torrentio)" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4 text-white focus:outline-none focus:border-sky-500">
+        <input id="addon-url" type="text" placeholder="https://example.com/manifest.json" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6 text-white focus:outline-none focus:border-sky-500">
+        <div class="flex gap-4">
+          <button onclick="saveAddon()" class="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-medium">Save Changes</button>
+          <button onclick="closeModal()" class="flex-1 py-3.5 bg-zinc-700 hover:bg-zinc-600 rounded-2xl font-medium">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="text-center text-zinc-500 mt-16 text-sm">
+      Last checked: <span id="last-checked">Never</span>
     </footer>
   </div>
 
   <script>
-    // Default debrid services
-    let debridServices = [
+    let addons = [];
+    let editingIndex = -1;
+
+    const debridServices = [
       { name: "Real-Debrid", checkUrl: "https://real-debrid.com", statusUrl: "https://real-debrid.com" },
       { name: "Torbox", checkUrl: "https://torbox.app", statusUrl: "https://status.torbox.app" }
     ];
 
-    // Load / Save addons
-    let myAddons = [];
+    const defaultAddons = [
+      { name: "AIOStreams Elfhosted", checkUrl: "https://aio.elfhosted.com/manifest.json" },
+      { name: "AIOStreams Midnight", checkUrl: "https://aio.midnight.com/manifest.json" },
+      { name: "AIOStreams Yeb", checkUrl: "https://aio.yeb.co/manifest.json" },
+      { name: "AIOStreams Omni", checkUrl: "https://aio.omni.com/manifest.json" },
+      { name: "AIOMetadata", checkUrl: "https://metadata.elfhosted.com/manifest.json" },
+      { name: "Torrentio", checkUrl: "https://torrentio.strem.fun/manifest.json" },
+      { name: "Comet", checkUrl: "https://comet.elfhosted.com/manifest.json" },
+      { name: "MediaFusion", checkUrl: "https://mediafusion.elfhosted.com/manifest.json" },
+      { name: "Meteor", checkUrl: "https://meteor.elfhosted.com/manifest.json" },
+      { name: "Knaben", checkUrl: "https://knaben.org/manifest.json" }
+    ];
 
     function loadAddons() {
       const saved = localStorage.getItem('stremioAddons');
       if (saved) {
-        myAddons = JSON.parse(saved);
+        addons = JSON.parse(saved);
       } else {
-        // Default addons
-        myAddons = [
-          { name: "Torrentio", checkUrl: "https://torrentio.strem.fun/manifest.json" },
-          { name: "Comet", checkUrl: "https://comet.elfhosted.com/manifest.json" },
-          { name: "MediaFusion", checkUrl: "https://mediafusion.elfhosted.com/manifest.json" },
-          { name: "AIOStreams Elfhosted", checkUrl: "https://aio.elfhosted.com" },
-          { name: "AIOStreams Midnight", checkUrl: "https://aio.midnight.com" },
-          { name: "AIOStreams Yeb", checkUrl: "https://aio.yeb.fun" },
-          { name: "AIOStreams Omni", checkUrl: "https://aio.omni.com" },
-          { name: "AIOMetadata Elfhosted", checkUrl: "https://meta.elfhosted.com" }
-        ];
-        saveAddons();
+        addons = [...defaultAddons];
+        saveToLocalStorage();
       }
     }
 
-    function saveAddons() {
-      localStorage.setItem('stremioAddons', JSON.stringify(myAddons));
-    }
-
-    function addNewAddon() {
-      const name = document.getElementById('new-name').value.trim();
-      const url = document.getElementById('new-url').value.trim();
-
-      if (!name || !url) {
-        alert('Please enter both name and URL');
-        return;
-      }
-
-      myAddons.push({ name, checkUrl: url });
-      saveAddons();
-      renderAddons();
-      checkStatus(myAddons[myAddons.length - 1]);
-
-      // Clear inputs
-      document.getElementById('new-name').value = '';
-      document.getElementById('new-url').value = '';
-    }
-
-    function deleteAddon(index) {
-      if (confirm('Delete this addon?')) {
-        myAddons.splice(index, 1);
-        saveAddons();
-        renderAddons();
-      }
-    }
-
-    function clearAllAddons() {
-      if (confirm('Clear ALL custom addons?')) {
-        myAddons = [];
-        saveAddons();
-        renderAddons();
-      }
-    }
-
-    async function checkStatus(service, isDebrid = false) {
-      const id = isDebrid ? `d-${service.name.replace(/\s+/g, '')}` : `a-${service.name.replace(/\s+/g, '')}`;
-      const card = document.getElementById(id);
-      if (!card) return;
-
-      const statusEl = card.querySelector('.status-text');
-      const dotEl = card.querySelector('.status-dot');
-
-      statusEl.textContent = "Checking...";
-      statusEl.className = "status-text text-yellow-400 font-medium";
-      dotEl.className = "status-dot bg-yellow-400";
-
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-
-        await fetch(service.checkUrl, {
-          method: 'HEAD',
-          mode: 'no-cors',
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-
-        statusEl.textContent = "Up";
-        statusEl.className = "status-text text-emerald-400 font-medium";
-        dotEl.className = "status-dot bg-emerald-400";
-      } catch (e) {
-        statusEl.textContent = "Down / Slow";
-        statusEl.className = "status-text text-red-400 font-medium";
-        dotEl.className = "status-dot bg-red-400";
-      }
-    }
-
-    function createCard(service, isDebrid = false, index = null) {
-      const prefix = isDebrid ? 'd' : 'a';
-      const id = `${prefix}-${service.name.replace(/\s+/g, '')}`;
-      const deleteBtn = !isDebrid ? `<button onclick="deleteAddon(${index})" class="text-red-400 hover:text-red-500 text-xl">×</button>` : '';
-
-      return `
-        <div id="${id}" class="addon-card bg-zinc-900 rounded-2xl p-6 hover:bg-zinc-800 transition">
-          <div class="flex justify-between items-start">
-            <div>
-              <h3 class="text-xl font-semibold">${service.name}</h3>
-              ${isDebrid ? `<a href="${service.statusUrl}" target="_blank" class="text-xs text-zinc-400 hover:text-white">Status Page →</a>` : ''}
-            </div>
-            <div class="text-right flex items-center gap-3">
-              <span class="status-dot bg-yellow-400"></span>
-              <span class="status-text ml-2 text-yellow-400 font-medium">Checking...</span>
-              ${deleteBtn}
-            </div>
-          </div>
-        </div>
-      `;
+    function saveToLocalStorage() {
+      localStorage.setItem('stremioAddons', JSON.stringify(addons));
     }
 
     function renderDebrid() {
       const container = document.getElementById('debrid-cards');
-      container.innerHTML = debridServices.map(s => createCard(s, true)).join('');
-      debridServices.forEach(s => checkStatus(s, true));
+      container.innerHTML = debridServices.map((service, i) => `
+        <div class="bg-zinc-900 rounded-2xl p-6">
+          <div class="flex justify-between items-start">
+            <div>
+              <h3 class="font-semibold text-lg">${service.name}</h3>
+              <a href="${service.statusUrl}" target="_blank" class="text-xs text-zinc-400 hover:text-white">Official Status →</a>
+            </div>
+            <div class="text-right">
+              <span id="dot-d${i}" class="status-dot bg-yellow-400"></span>
+              <span id="status-d${i}" class="ml-2 text-yellow-400 font-medium">Checking...</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
     }
 
     function renderAddons() {
-      const container = document.getElementById('addon-cards');
-      container.innerHTML = myAddons.length 
-        ? myAddons.map((s, i) => createCard(s, false, i)).join('')
-        : '<p class="text-zinc-400 col-span-full text-center py-12">No addons yet. Add some above!</p>';
-      myAddons.forEach((s, i) => checkStatus(s, false));
+      const container = document.getElementById('addons-container');
+      container.innerHTML = addons.map((addon, index) => `
+        <div class="bg-zinc-900 rounded-2xl p-6 group">
+          <div class="flex justify-between items-start">
+            <div class="flex-1">
+              <h3 class="font-semibold text-lg">${addon.name}</h3>
+              <p class="text-xs text-zinc-500 break-all mt-1">${addon.checkUrl}</p>
+            </div>
+            <div class="flex gap-4 ml-4">
+              <button onclick="editAddon(${index})" class="text-sky-400 hover:text-white transition">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button onclick="deleteAddon(${index})" class="text-red-400 hover:text-white transition">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          <div class="mt-4 flex items-center">
+            <span id="dot-${index}" class="status-dot bg-yellow-400"></span>
+            <span id="status-${index}" class="ml-2 text-yellow-400 font-medium">Checking...</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function checkStatus(checkUrl, dotId, statusId) {
+      const dot = document.getElementById(dotId);
+      const statusEl = document.getElementById(statusId);
+      if (!dot || !statusEl) return;
+
+      dot.className = 'status-dot bg-yellow-400';
+      statusEl.className = 'ml-2 text-yellow-400 font-medium';
+      statusEl.textContent = 'Checking...';
+
+      try {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 8000);
+
+        await fetch(checkUrl, { 
+          method: 'HEAD', 
+          mode: 'no-cors', 
+          signal: controller.signal 
+        });
+        
+        dot.className = 'status-dot bg-emerald-400';
+        statusEl.className = 'ml-2 text-emerald-400 font-medium';
+        statusEl.textContent = '✅ Up';
+      } catch (e) {
+        dot.className = 'status-dot bg-red-400';
+        statusEl.className = 'ml-2 text-red-400 font-medium';
+        statusEl.textContent = '❌ Down / Slow';
+      }
     }
 
     function checkAllStatuses() {
       document.getElementById('last-checked').textContent = new Date().toLocaleTimeString();
-      renderDebrid();
+
+      debridServices.forEach((s, i) => checkStatus(s.checkUrl, `dot-d${i}`, `status-d${i}`));
+      addons.forEach((a, i) => checkStatus(a.checkUrl, `dot-${i}`, `status-${i}`));
+    }
+
+    function showAddForm() {
+      editingIndex = -1;
+      document.getElementById('modal-title').textContent = 'Add New Addon';
+      document.getElementById('addon-name').value = '';
+      document.getElementById('addon-url').value = '';
+      document.getElementById('addon-modal').classList.remove('hidden');
+    }
+
+    function editAddon(index) {
+      editingIndex = index;
+      const addon = addons[index];
+      document.getElementById('modal-title').textContent = 'Edit Addon';
+      document.getElementById('addon-name').value = addon.name;
+      document.getElementById('addon-url').value = addon.checkUrl;
+      document.getElementById('addon-modal').classList.remove('hidden');
+    }
+
+    function saveAddon() {
+      const name = document.getElementById('addon-name').value.trim();
+      const url = document.getElementById('addon-url').value.trim();
+
+      if (!name || !url) {
+        alert("Both name and URL are required");
+        return;
+      }
+
+      if (editingIndex >= 0) {
+        addons[editingIndex] = { name, checkUrl: url };
+      } else {
+        addons.push({ name, checkUrl: url });
+      }
+
+      saveToLocalStorage();
+      closeModal();
       renderAddons();
+      setTimeout(checkAllStatuses, 300);
     }
 
-    function shareConfig() {
-      const config = {
-        addons: myAddons
-      };
-      const encoded = btoa(JSON.stringify(config));
-      const url = `${window.location.origin}${window.location.pathname}?config=${encoded}`;
-      
-      navigator.clipboard.writeText(url).then(() => {
-        alert('✅ Config URL copied to clipboard!\n\nBookmark this link to restore your setup later.');
-      });
-    }
-
-    // Load from URL if present
-    function loadFromURL() {
-      const params = new URLSearchParams(window.location.search);
-      const configStr = params.get('config');
-      if (configStr) {
-        try {
-          const config = JSON.parse(atob(configStr));
-          if (config.addons && Array.isArray(config.addons)) {
-            myAddons = config.addons;
-            saveAddons();
-            // Clean URL
-            window.history.replaceState({}, '', window.location.pathname);
-          }
-        } catch(e) {}
+    function deleteAddon(index) {
+      if (confirm('Delete this addon?')) {
+        addons.splice(index, 1);
+        saveToLocalStorage();
+        renderAddons();
       }
     }
 
-    // Initialize
+    function closeModal() {
+      document.getElementById('addon-modal').classList.add('hidden');
+    }
+
+    function shareConfig() {
+      const configStr = JSON.stringify(addons);
+      const encoded = btoa(configStr);
+      const shareUrl = `${window.location.origin}${window.location.pathname}?config=${encoded}`;
+      
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        alert('✅ Link copied! Bookmark this URL to restore your exact setup later (even after cache clear).');
+      });
+    }
+
+    function loadFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const config = params.get('config');
+      if (config) {
+        try {
+          addons = JSON.parse(atob(config));
+          saveToLocalStorage();
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch(e) {
+          console.error('Failed to load config');
+        }
+      }
+    }
+
     window.onload = () => {
-      loadFromURL();
+      loadFromUrl();
       loadAddons();
       renderDebrid();
       renderAddons();
+      checkAllStatuses();
     };
   </script>
 </body>
